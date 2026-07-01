@@ -1,0 +1,24 @@
+# Raw dataset — too large for git, participants supply their own copy
+data/raw/
+*.jsonl
+
+# Original hackathon bundle
+*.zip
+
+# Generated outputs
+output/
+*.csv
+!data/reference/sample_submission.csv
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Editor / OS cruft
+.DS_Store
+__MACOSX/
+.vscode/
