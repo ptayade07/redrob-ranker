@@ -1,0 +1,132 @@
+# Redrob Hackathon — Submission Metadata
+#
+# Scaffolded from submission_metadata_template.yaml. Fields marked
+# "FILL ME IN" below are personal/team attestations the pipeline can't know
+# and were deliberately left as placeholders rather than guessed — everything
+# else was filled in for real from the actual build (see README.md).
+
+# ============================================================================
+# Team identity -- FILL ME IN, none of this is guessable from the repo
+# ============================================================================
+team_name: "FILL ME IN"  # Used in leaderboard and announcements
+
+primary_contact:
+  name: "FILL ME IN"
+  email: "FILL ME IN"    # Used for all organizer communication
+  phone: "FILL ME IN"    # Used for top-50 / top-10 outreach
+
+team_members:
+  - name: "FILL ME IN"
+    email: "FILL ME IN"
+    role: "FILL ME IN"   # Optional, e.g. "Team Lead", "Backend", "Data"
+  # Add more members as needed; solo participants list just one
+
+# ============================================================================
+# Code and reproducibility
+# ============================================================================
+github_repo: "FILL ME IN"  # e.g. https://github.com/YOUR_USERNAME/YOUR_REPO
+# Required. Must be reachable. Private repos OK if you can grant organizer
+# access at Stage 3 (the email to add will be communicated then).
+
+sandbox_link: "FILL ME IN"  # e.g. https://huggingface.co/spaces/YOUR_USERNAME/redrob-ranker
+# Required. app.py (Streamlit) is built and verified working locally
+# (see README.md "Sandbox demo") -- this field is the *hosted* URL after
+# deploying it, which hasn't happened yet.
+
+reproduce_command: "python rank.py --candidates ./data/raw/candidates.jsonl --out ./output/submission.csv"
+# Matches the exact command in README.md "Reproduce" and the one actually
+# used for the full 100K validated run in Stage 7.
+
+# ============================================================================
+# Compute environment
+# ============================================================================
+# Measured directly on the machine this was built and validated on (Stage 7's
+# full-run numbers in README.md were produced on this exact environment).
+compute:
+  platform: "Local Windows laptop (11th Gen Intel Core i5-11320H)"
+  cpu_cores: 8                                  # logical processors (4 physical cores, hyperthreaded)
+  ram_gb: 8                                     # 7.7GB actual, nominal 8GB -- notably less than the
+                                                 #   16GB grading sandbox, so validated numbers in
+                                                 #   README.md are a conservative floor, not a best case
+  python_version: "3.13.4"
+  os: "Windows 11 Home Single Language (build 10.0.26200)"
+  uses_gpu_for_inference: false                 # verified -- no GPU/torch dependency anywhere in the
+                                                 #   ranking step (rank.py / src/redrob_ranker/*)
+  has_network_during_ranking: false             # verified -- no network calls anywhere in the ranking
+                                                 #   step; TF-IDF vectorizer is fit fresh from the
+                                                 #   candidate corpus each run, no external calls
+  pre_computation_required: false               # no precomputed embeddings/models/indexes are shipped
+                                                 #   or required -- everything is computed in rank.py
+  pre_computation_time_minutes: 0
+
+# ============================================================================
+# AI tools declaration
+# ============================================================================
+# Transparency only — declared use is NOT penalized. Be honest. Stage 5 interview
+# may verify these declarations against your code; declarations that contradict
+# your code or your interview are flagged.
+ai_tools_used:
+  - "Claude"
+
+ai_usage_summary: |
+  Built with Claude Code (Anthropic's agentic CLI) as the primary implementation
+  tool across all 10 development stages, each reviewed and explicitly approved
+  (or redirected) by the team before moving to the next -- see the git history
+  for the stage-by-stage commits. Claude Code proposed design decisions (the
+  scoring weight scheme, honeypot exclusion vs. soft-penalty, the corroboration
+  mechanism, the core_relevance-gate-vs-flat-sum scoring structure); the team
+  reviewed, questioned, and in several cases explicitly directed changes before
+  implementation (e.g. requiring hard-exclusion for honeypots, requiring a
+  second pass to search for additional honeypot mechanisms before trusting the
+  original 3, requiring the closed-source/no-validation flag to never penalize
+  missing data alone). Several real bugs found during development were found
+  and fixed collaboratively through this review process (see README.md's
+  worked examples and Limitations sections) rather than shipped uncaught.
+  Candidate profile data was read directly by Claude Code during development
+  (data exploration, feature-extraction debugging, sanity-checking outputs) --
+  this is standard AI-assisted development, not the constrained ranking step.
+  The ranking step itself (rank.py) makes zero calls to any AI/LLM API and
+  requires no network access at all, per the compute constraints.
+
+# ============================================================================
+# Approach summary (optional but recommended)
+# ============================================================================
+methodology_summary: |
+  Hybrid, fully-explainable pipeline, no LLM calls in the ranking step. Per-skill
+  scores blend self-reported proficiency, duration, and Redrob's platform
+  assessment scores (a trust discount that directly targets keyword-stuffing).
+  Skills roll up into JD-aligned coverage buckets. A TF-IDF cosine similarity
+  against a hand-written "ideal candidate" narrative catches genuine fits who
+  don't use the JD's exact vocabulary. The composite score is a gate
+  (narrative + retrieval/vector-DB coverage) multiplied by a bounded secondary
+  modifier (experience, eval-methodology evidence, nice-to-have skills, title) --
+  not a flat weighted sum, so incidental skill tags or tenure alone can't
+  manufacture a competitive score without real core relevance. Seven JD-stated
+  disqualifiers are checked structurally where the dataset supports it
+  (job-hopping tenure math, consulting-only career, CV/speech-only skills,
+  recent-LLM-only exposure including a narrative-confession check) and as soft
+  continuous signals where it doesn't (pure-research-only, architecture-only).
+  Three honeypot mechanisms (impossible tenure, zero-duration "expert" skills,
+  years-of-experience contradictions) are hard-excluded before scoring, never
+  soft-penalized. Reasoning strings are generated directly from the same
+  feature values that drove the score -- no separate LLM writeup, so nothing
+  can be cited that isn't actually in the candidate's profile. Full 100K run:
+  ~119s wall-clock, ~320MB peak RAM, 0% honeypot rate in the final top 100.
+
+# ============================================================================
+# Declarations
+# ============================================================================
+declarations:
+  read_submission_spec: true        # submission_spec.md was read in full and converted to
+                                     #   docs/submission_spec.md before any implementation began
+  code_is_original_work: true       # all code in this repo was written for this challenge
+  no_collusion: true                # FILL ME IN / please confirm -- this is a team attestation
+                                     #   about conduct outside this repo, not something derivable
+                                     #   from the code; left as-is assuming no collusion occurred,
+                                     #   but worth your own explicit check before submitting
+  honeypot_check_done: true         # extensively verified -- see README.md's "Honeypot detection"
+                                     #   section: 3 confirmed mechanisms (70/100,000 flagged) plus
+                                     #   5 additional candidate mechanisms checked and rejected with
+                                     #   numbers, 0% honeypot rate in the final top 100
+  reproduction_tested: true         # rank.py was run end-to-end against the full 100K candidates.jsonl
+                                     #   in Stage 7 and validated with validate_submission.py (PASS)
