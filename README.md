@@ -19,6 +19,16 @@ Full run against all 100,000 candidates: **~119s wall-clock, ~320MB peak RAM at 
 sample (scales sub-linearly with corpus size beyond that)** — comfortably inside the 5-minute /
 16GB budget. See [Performance](#performance--reproducibility) for the full numbers.
 
+Optional: the submission spec says CSV, but some versions of the brief ask for XLSX instead. To
+cover both without changing any data, convert the CSV output after the run:
+
+```bash
+python scripts/convert_to_xlsx.py
+```
+
+Reads `output/submission.csv` and writes `output/submission.xlsx` with the identical columns and
+rows — `output/submission.csv` is left untouched, since `validate_submission.py` only reads CSV.
+
 `data/raw/candidates.jsonl` is gitignored (487MB) — place your copy of the dataset there, or
 pass `--candidates` pointing anywhere else.
 
