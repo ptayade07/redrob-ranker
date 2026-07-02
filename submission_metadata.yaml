@@ -1,18 +1,21 @@
 team_name: "KOMI"
 
 primary_contact:
-  name: "Purva Pradeep Tayade"
-  email: "purvatayade2603@gmail.com"
+  name: "Purva Tayade"
+  email: "pptayade07@gmail.com"
   phone: "9403229194"
 
 team_members:
+  - name: "Purva Tayade"
+    email: "pptayade07@gmail.com"
+    role: "Team Lead"
   - name: "PriyaKumari Singh"
     email: "priyasingh@avantika.edu.in"
     role: "Team Member"
 
-github_repo: "FILL ME IN"
+github_repo: "https://github.com/ptayade07/redrob-ranker"
 
-sandbox_link: "FILL ME IN"
+sandbox_link: "https://redrob-ranker-pt.streamlit.app/"
 
 reproduce_command: "python rank.py --candidates ./data/raw/candidates.jsonl --out ./output/submission.csv"
 
