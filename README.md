@@ -457,6 +457,31 @@ Requires Python 3.11+ (developed and tested on 3.13; avoid 3.14+ until numpy/sci
 catch up). Place the full `candidates.jsonl` at `data/raw/candidates.jsonl`, or pass any path via
 `--candidates`.
 
+## Sandbox demo
+
+```bash
+streamlit run app.py
+```
+
+Opens at `http://localhost:8501`. Loads the committed 50-candidate
+`data/reference/sample_candidates.json` by default (zero setup), or upload any small `.json`
+array / `.jsonl` slice to rank a different sample. Click **Run ranking** to see the same
+`candidate_id, rank, score, reasoning` columns as the submission CSV.
+
+`app.py` calls `src/redrob_ranker/scoring.score_candidates()` directly — the exact same function
+`rank.py` uses for the real submission, not a simplified stand-in. The only difference from a
+real run is pool size: per submission_spec.md section 10.5, a sandbox only needs to prove the
+system runs end-to-end on a small sample, not reproduce the full 100K ranking (that's what Stage
+3 code reproduction checks separately). Because `narrative_relevance` is normalized relative to
+whatever pool is scored (see [Min-max normalization](#min-max-normalization-not-percentile-rank--a-bug-found-via-sanity-checking)),
+scores from this small-sample sandbox aren't comparable to real submission scores — the app
+surfaces that as an on-screen notice after each run, not just in this README.
+
+Verified end-to-end with a headless-browser driver (Playwright) before committing: default
+sample loads with zero errors, **Run ranking** produces a populated results table, file upload
+with a custom 5-candidate slice correctly reruns the pipeline and updates the table, zero
+browser console errors in either path.
+
 ## What's been validated
 
 - `validate_submission.py` passes against the full-run output.
