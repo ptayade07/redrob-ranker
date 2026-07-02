@@ -22,6 +22,7 @@ from datetime import date
 
 from . import skills
 from .config import JD, JDRequirements
+from .text_utils import contains_any_term, contains_term, count_distinct_terms
 
 # Dataset generation reference point. last_active_date / signup_date values
 # in this dataset cluster right up through mid-2026 (checked against the
@@ -159,12 +160,12 @@ def flag_cv_speech_only(
     if retrieval_ranking_coverage > 0 or vector_db_coverage > 0:
         return False
     text = career_text.lower()
-    return not any(term in text for term in _NLP_IR_OVERRIDE_TERMS)
+    return not contains_any_term(text, _NLP_IR_OVERRIDE_TERMS)
 
 
 _PRE_LLM_ML_TERMS = (
     "machine learning", "model", "pipeline", "ranking", "recommendation",
-    "nlp", "data science", "ml ",
+    "nlp", "data science", "ml",
 )
 # ChatGPT's public launch -- rough dividing line between "pre-LLM-era
 # production ML" and "recent LLM-wrapper work" per the JD's own framing.
@@ -173,21 +174,56 @@ _LLM_ERA_START = "2022-11-01"
 
 def _any_pre_llm_production_ml(career_history: list[dict]) -> bool:
     for h in career_history:
-        if h["start_date"] < _LLM_ERA_START and any(k in h["description"].lower() for k in _PRE_LLM_ML_TERMS):
+        if h["start_date"] < _LLM_ERA_START and contains_any_term(h["description"].lower(), _PRE_LLM_ML_TERMS):
             return True
     return False
+
+
+_HOBBYIST_AI_MARKERS = (
+    "online course", "online courses", "side project", "side projects",
+    "personal project", "personal projects", "for fun", "in my spare time",
+    "self-directed", "self-taught", "experimenting with", "exploring how",
+)
+_HOBBYIST_AI_TOPIC_TERMS = (
+    "rag", "llm", "langchain", "vector database", "genai", "openai", "gpt",
+    "prompt engineering", "fine-tun",
+)
+
+
+def _summary_confesses_hobbyist_ai(summary: str) -> bool:
+    """Catches candidates whose own profile summary frames their AI
+    exposure as coursework/side-projects rather than production work --
+    e.g. CAND_0000021 (Stage 6 conversation): 'I've been taking online
+    courses on RAG and vector databases, experimenting with LangChain and
+    the OpenAI API for side projects.' That candidate's skills list
+    self-reports 18 months of 'Embeddings' with zero backing in
+    skill_assessment_scores -- an unverified duration claim contradicted
+    by the candidate's own narrative. This check trusts the narrative over
+    the duration field when they disagree.
+    """
+    text = summary.lower()
+    return contains_any_term(text, _HOBBYIST_AI_MARKERS) and contains_any_term(text, _HOBBYIST_AI_TOPIC_TERMS)
 
 
 def flag_recent_llm_only(candidate: dict, jd: JDRequirements = JD) -> bool:
     """JD: 'AI experience consists primarily of recent (under 12 months)
     projects using LangChain to call OpenAI ... unless you can demonstrate
-    substantial pre-LLM-era ML production experience.' Approximated as: the
-    candidate HAS at least one AI-flavored skill (otherwise this
-    disqualifier doesn't apply to them at all -- "no AI experience" is a
-    different, separately-captured failure mode, not "recent-only AI
-    experience"), none of those skills has 12+ months of use, AND no
-    career_history entry that predates the LLM era describes ML/data work.
+    substantial pre-LLM-era ML production experience.'
+
+    Two independent checks, either one is sufficient:
+    1. The candidate's own summary frames their AI exposure as hobbyist/
+       coursework (see _summary_confesses_hobbyist_ai) -- this overrides
+       self-reported skill durations, which aren't independently verified.
+    2. Structural fallback for candidates who don't narrate it explicitly:
+       the candidate HAS at least one AI-flavored skill (otherwise this
+       disqualifier doesn't apply -- "no AI experience" is a different,
+       separately-captured failure mode), none of those skills has 12+
+       months of claimed use, AND no career_history entry predating the
+       LLM era describes ML/data work.
     """
+    if _summary_confesses_hobbyist_ai(candidate["profile"].get("summary", "")):
+        return True
+
     ai_bucket = (
         jd.retrieval_ranking_skills + jd.vector_db_skills + jd.fine_tuning_skills
         + jd.framework_only_markers + jd.cv_speech_robotics_skills + jd.general_data_skills
@@ -215,11 +251,14 @@ def production_evidence_score(career_text: str) -> float:
     'research-only' while describing their preference AGAINST it).
     """
     text = career_text.lower()
-    hits = sum(text.count(term) for term in _PRODUCTION_EVIDENCE_TERMS)
-    return min(1.0, hits / 3)  # 3+ mentions of shipping language = full credit
+    # Distinct-term presence count, not raw substring occurrence count --
+    # a candidate repeating "production" five times shouldn't outscore one
+    # with diverse evidence across three different terms.
+    hits = count_distinct_terms(text, _PRODUCTION_EVIDENCE_TERMS)
+    return min(1.0, hits / 3)  # 3+ distinct terms present = full credit
 
 
-_ARCHITECTURE_TITLE_MARKERS = ("architect", "engineering manager", "director", "vp ", "head of", "principal")
+_ARCHITECTURE_TITLE_MARKERS = ("architect", "engineering manager", "director", "vp", "head of", "principal")
 
 
 def architecture_only_risk(career_history: list[dict]) -> float:
@@ -231,7 +270,7 @@ def architecture_only_risk(career_history: list[dict]) -> float:
     if not career_history:
         return 0.0
     current = next((h for h in career_history if h["is_current"]), career_history[0])
-    if not any(marker in current["title"].lower() for marker in _ARCHITECTURE_TITLE_MARKERS):
+    if not contains_any_term(current["title"].lower(), _ARCHITECTURE_TITLE_MARKERS):
         return 0.0
     tenure = current["duration_months"]
     return min(1.0, tenure / 18) if tenure >= 18 else 0.3
@@ -261,7 +300,7 @@ def flag_closed_source_no_validation(candidate: dict) -> bool:
         return False
     text = (candidate["profile"].get("summary", "") + " "
             + " ".join(h["description"] for h in candidate["career_history"])).lower()
-    if any(term in text for term in _EXTERNAL_VALIDATION_TERMS):
+    if contains_any_term(text, _EXTERNAL_VALIDATION_TERMS):
         return False
     return True
 
@@ -274,7 +313,7 @@ def eval_methodology_evidence(career_text: str, jd: JDRequirements = JD) -> bool
     prose instead, so this is a text search, not a skills-list lookup.
     """
     text = career_text.lower()
-    return any(term in text for term in jd.eval_methodology_terms)
+    return contains_any_term(text, jd.eval_methodology_terms)
 
 
 # --- behavioral signals --------------------------------------------------
@@ -309,7 +348,16 @@ class CandidateFeatures:
     cv_speech_coverage: float
     matched_must_have_skills: list[str]
     matched_nice_to_have_skills: list[str]
+    matched_cv_speech_skills: list[str]
     eval_methodology_evidence: bool
+
+    # career-history stats, always computed (not just when is_job_hopper),
+    # so reasoning generation can cite exact numbers instead of vague
+    # language -- e.g. "4 roles averaging 15 months" rather than "changes
+    # jobs frequently."
+    n_jobs: int
+    avg_tenure_months: float
+    consulting_companies: list[str]  # non-empty only when is_consulting_only
 
     # title / seniority / experience
     title_relevance: float
@@ -336,8 +384,16 @@ class CandidateFeatures:
     profile_completeness: float
     open_to_work: bool
 
-    # filled in after batch TF-IDF fit (Stage 6) -- default 0.0 until then
+    # filled in after batch TF-IDF fit (Stage 6) -- default 0.0 until then.
+    # narrative_relevance is narrative_similarity min-max scaled by the
+    # pool's own max value (0=no shared vocabulary at all, 1=the best
+    # narrative match in the pool) -- see scoring.py's module docstring.
+    # This is pool-size- and pool-composition-dependent by design, so it
+    # must always be computed against the full candidate pool being
+    # ranked, never a subset, or the number means something different
+    # than it looks like it means.
     narrative_similarity: float = 0.0
+    narrative_relevance: float = 0.0
 
     # raw context carried forward for reasoning generation (Stage 6)
     current_title: str = ""
@@ -349,6 +405,18 @@ class CandidateFeatures:
     notice_period_days: int = 0
 
     narrative_text: str = field(default="", repr=False)
+    # career_history descriptions only, no summary/headline -- used for the
+    # skill/narrative corroboration check in scoring.py. Deliberately
+    # narrower than narrative_text: job descriptions describe verified past
+    # work, while profile.summary is self-promotional/aspirational and can
+    # contain forward-looking or hobbyist language ("I've been taking
+    # online courses on RAG...", "looking to grow into...") that mentions
+    # the right words without describing real production experience. See
+    # CAND_0000021 in the Stage 6 conversation: their summary contains the
+    # word "vector" while explicitly describing side-project/course work,
+    # which would have (incorrectly) satisfied a corroboration check that
+    # included the summary.
+    career_history_text: str = field(default="", repr=False)
 
 
 def extract_features(candidate: dict, jd: JDRequirements = JD) -> CandidateFeatures:
@@ -358,9 +426,9 @@ def extract_features(candidate: dict, jd: JDRequirements = JD) -> CandidateFeatu
     skill_list = candidate["skills"]
     assessment_scores = signals.get("skill_assessment_scores", {})
 
+    career_history_text = " ".join(h.get("description", "") for h in career_history)
     narrative_text = " ".join(
-        [profile.get("headline", ""), profile.get("summary", "")]
-        + [h.get("description", "") for h in career_history]
+        [profile.get("headline", ""), profile.get("summary", ""), career_history_text]
     )
 
     retrieval_cov, retrieval_matched = skills.bucket_coverage(
@@ -378,8 +446,14 @@ def extract_features(candidate: dict, jd: JDRequirements = JD) -> CandidateFeatu
 
     must_have_names = sorted({s.name for s in retrieval_matched + vector_db_matched + python_ml_matched})
     nice_to_have_names = sorted({s.name for s in fine_tuning_matched + infra_matched})
+    cv_speech_names = sorted({s.name for s in cv_speech_matched})
 
     offer_rate = signals.get("offer_acceptance_rate", -1)
+
+    n_jobs = len(career_history)
+    avg_tenure_months = sum(h["duration_months"] for h in career_history) / n_jobs if n_jobs else 0.0
+    is_consulting = flag_consulting_only(career_history, jd)
+    consulting_companies = sorted({h["company"] for h in career_history}) if is_consulting else []
 
     return CandidateFeatures(
         candidate_id=candidate["candidate_id"],
@@ -391,7 +465,11 @@ def extract_features(candidate: dict, jd: JDRequirements = JD) -> CandidateFeatu
         cv_speech_coverage=cv_speech_cov,
         matched_must_have_skills=must_have_names,
         matched_nice_to_have_skills=nice_to_have_names,
-        eval_methodology_evidence=eval_methodology_evidence(narrative_text, jd),
+        matched_cv_speech_skills=cv_speech_names,
+        eval_methodology_evidence=eval_methodology_evidence(career_history_text, jd),
+        n_jobs=n_jobs,
+        avg_tenure_months=avg_tenure_months,
+        consulting_companies=consulting_companies,
 
         title_relevance=title_relevance_score(profile["current_title"]),
         experience_fit=experience_band_fit(profile["years_of_experience"], jd),
@@ -400,11 +478,11 @@ def extract_features(candidate: dict, jd: JDRequirements = JD) -> CandidateFeatu
         notice_period_fit=notice_period_fit(signals["notice_period_days"], jd),
 
         is_job_hopper=flag_job_hopper(career_history),
-        is_consulting_only=flag_consulting_only(career_history, jd),
-        is_cv_speech_only=flag_cv_speech_only(cv_speech_cov, retrieval_cov, vector_db_cov, narrative_text),
+        is_consulting_only=is_consulting,
+        is_cv_speech_only=flag_cv_speech_only(cv_speech_cov, retrieval_cov, vector_db_cov, career_history_text),
         is_recent_llm_only=flag_recent_llm_only(candidate, jd),
         is_closed_source_no_validation=flag_closed_source_no_validation(candidate),
-        production_evidence_score=production_evidence_score(narrative_text),
+        production_evidence_score=production_evidence_score(career_history_text),
         architecture_only_risk=architecture_only_risk(career_history),
 
         engagement_activity_recency=activity_recency_score(signals["last_active_date"]),
@@ -423,4 +501,5 @@ def extract_features(candidate: dict, jd: JDRequirements = JD) -> CandidateFeatu
         notice_period_days=signals["notice_period_days"],
 
         narrative_text=narrative_text,
+        career_history_text=career_history_text,
     )
