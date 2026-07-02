@@ -194,7 +194,21 @@ DISQUALIFIERS: tuple[Disqualifier, ...] = (
         "If you've spent your career in pure research environments (academic "
         "labs, research-only roles) without any production deployment -- we "
         "will not move forward.",
-        "features.py: flag_pure_research_only()",
+        "features.py: flag_pure_research_only() -- CONTINUOUS 0..1 risk score, "
+        "not a binary flag. Stage 4 data exploration searched career_history "
+        "text for academic/research-only language (PhD, postdoc, thesis, "
+        "'never shipped', 'academic lab', etc.) and found zero hits in the "
+        "full 100K-candidate dataset -- this JD disqualifier has no dedicated "
+        "keyword/title archetype here (unlike consulting_only or "
+        "title_chaser, which do). Naively matching the phrase 'research-only' "
+        "even backfires: it appears in the JD's own gold-standard "
+        "candidates' summaries as a stated preference AGAINST research-only "
+        "work ('strong preference for shipping real systems over "
+        "research-only work'). So this is implemented as the inverse of a "
+        "continuous production-evidence score (count of shipping/deployment "
+        "language across career_history), which the narrative-similarity "
+        "feature (Stage 6) already reinforces, rather than a fragile hard "
+        "trigger that risks false-positiving on strong candidates.",
     ),
     Disqualifier(
         "recent_llm_only_no_pre_llm_production",
@@ -209,7 +223,14 @@ DISQUALIFIERS: tuple[Disqualifier, ...] = (
         "If you are a senior engineer who hasn't written production code in "
         "the last 18 months because you've moved into 'architecture' or "
         "'tech lead' roles -- we will probably not move forward.",
-        "features.py: flag_architecture_only()",
+        "features.py: flag_architecture_only() -- CONTINUOUS 0..1 risk score. "
+        "The dataset's generated title vocabulary has no 'Architect', "
+        "'Engineering Manager', 'Director', or 'VP' titles at all (checked "
+        "across 40K candidates), so there's no dedicated trap to hard-match "
+        "against. Implemented as a forward-looking structural check (current "
+        "role title matches an architecture/lead marker AND tenure in that "
+        "role >= 18 months) that will correctly return 0 for this dataset "
+        "but generalizes if the title vocabulary ever includes those roles.",
     ),
     Disqualifier(
         "title_chaser",
